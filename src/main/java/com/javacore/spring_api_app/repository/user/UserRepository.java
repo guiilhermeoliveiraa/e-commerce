@@ -1,4 +1,4 @@
-package com.javacore.spring_api_app.repository;
+package com.javacore.spring_api_app.repository.user;
 
 import com.javacore.spring_api_app.entity.user.User;
 import org.springframework.data.jpa.repository.JpaRepository;

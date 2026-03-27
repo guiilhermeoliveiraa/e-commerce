@@ -1,4 +1,4 @@
-package com.javacore.spring_api_app.dto.request;
+package com.javacore.spring_api_app.dto.request.user;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

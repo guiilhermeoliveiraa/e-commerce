@@ -1,6 +1,6 @@
 package com.javacore.spring_api_app.service.UserDetails;
 
-import com.javacore.spring_api_app.repository.UserRepository;
+import com.javacore.spring_api_app.repository.user.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;

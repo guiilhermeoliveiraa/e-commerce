@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "spring.sendgrid")
 public record SendGridProperties(
         String apiKey,
-        String fromEmail
+        String fromEmail,
+        String templateId
 ) {
 }
