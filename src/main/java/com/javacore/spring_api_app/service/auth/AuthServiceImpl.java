@@ -6,7 +6,7 @@ import com.javacore.spring_api_app.dto.request.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.LoginUserResponse;
 import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
-import com.javacore.spring_api_app.entity.User;
+import com.javacore.spring_api_app.entity.user.User;
 import com.javacore.spring_api_app.exception.custom.BusinessException;
 import com.javacore.spring_api_app.exception.custom.InvalidCredentialsException;
 import com.javacore.spring_api_app.repository.UserRepository;

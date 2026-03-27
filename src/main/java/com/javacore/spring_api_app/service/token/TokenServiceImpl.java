@@ -1,6 +1,6 @@
 package com.javacore.spring_api_app.service.token;
 
-import com.javacore.spring_api_app.entity.User;
+import com.javacore.spring_api_app.entity.user.User;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
