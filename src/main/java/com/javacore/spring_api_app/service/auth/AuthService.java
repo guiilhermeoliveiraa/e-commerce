@@ -1,4 +1,4 @@
-package com.javacore.spring_api_app.service;
+package com.javacore.spring_api_app.service.auth;
 
 import com.javacore.spring_api_app.dto.request.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.RegisterUserResponse;

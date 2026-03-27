@@ -1,4 +1,4 @@
-package com.javacore.spring_api_app.service;
+package com.javacore.spring_api_app.service.auth;
 
 import com.javacore.spring_api_app.domain.email.EmailNormalizer;
 import com.javacore.spring_api_app.domain.name.NameNormalizer;
