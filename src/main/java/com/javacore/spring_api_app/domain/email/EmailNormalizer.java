@@ -1,4 +1,4 @@
-package com.javacore.spring_api_app.domain.name;
+package com.javacore.spring_api_app.domain.email;
 
 public final class EmailNormalizer {
 
