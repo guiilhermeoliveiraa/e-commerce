@@ -2,6 +2,7 @@ package com.javacore.spring_api_app.service.auth;
 
 import com.javacore.spring_api_app.domain.email.EmailNormalizer;
 import com.javacore.spring_api_app.domain.name.NameNormalizer;
+import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.LoginUserResponse;
@@ -9,7 +10,10 @@ import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
 import com.javacore.spring_api_app.entity.user.User;
 import com.javacore.spring_api_app.exception.custom.BusinessException;
 import com.javacore.spring_api_app.exception.custom.InvalidCredentialsException;
+import com.javacore.spring_api_app.exception.custom.ResourceNotFoundException;
 import com.javacore.spring_api_app.repository.user.UserRepository;
+import com.javacore.spring_api_app.service.email.EmailValidationService;
+import com.javacore.spring_api_app.service.sendgrid.SendGridService;
 import com.javacore.spring_api_app.service.token.TokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,16 +29,22 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final TokenService tokenService;
+    private final SendGridService sendGridService;
+    private final EmailValidationService emailValidationService;
 
     public AuthServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            TokenService tokenService) {
+            TokenService tokenService,
+            SendGridService sendGridService,
+            EmailValidationService emailValidationService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
+        this.sendGridService = sendGridService;
+        this.emailValidationService = emailValidationService;
     }
 
     @Override
@@ -56,9 +66,20 @@ public class AuthServiceImpl implements AuthService {
                 .firstName(normalizedFirstName)
                 .lastName(normalizedLastName)
                 .password(passwordEncoder.encode(request.password()))
+                .emailVerified(false)
                 .build();
 
-        return toResponse(userRepository.save(user));
+        user = userRepository.save(user);
+
+        var validation = emailValidationService.createValidation(user);
+
+        sendGridService.sendEmail(new SendGridEmailRequest(
+                user.getEmail(),
+                user.getFirstName(),
+                validation.getVerificationCode()
+        ));
+
+        return toResponse(user);
     }
 
     @Override
@@ -77,7 +98,39 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
                 .orElseThrow(() -> new InvalidCredentialsException("Credenciais inválidas"));
 
+        if (Boolean.FALSE.equals(user.getEmailVerified())) {
+            throw new BusinessException("Operação inválida");
+        }
+
         return new LoginUserResponse(tokenService.generateToken(user));
+    }
+
+    @Override
+    public void verifyEmail(String email, String code) {
+        User user = findUserByEmailAndThrow(email);
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new BusinessException("Operação inválida");
+        }
+
+        emailValidationService.validateCode(user.getId(), code);
+    }
+
+    @Override
+    public void resendEmail(String email) {
+        User user = findUserByEmailAndThrow(email);
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new BusinessException("Operação inválida");
+        }
+
+        var validation = emailValidationService.createValidation(user);
+
+        sendGridService.sendEmail(new SendGridEmailRequest(
+                user.getEmail(),
+                user.getFirstName(),
+                validation.getVerificationCode()
+        ));
     }
 
     private RegisterUserResponse toResponse(User user) {
@@ -90,5 +143,12 @@ public class AuthServiceImpl implements AuthService {
                 user.getUpdatedAt(),
                 user.getDeleted()
         );
+    }
+
+    private User findUserByEmailAndThrow(String email) {
+        String normalizedEmail = EmailNormalizer.normalize(email);
+
+        return userRepository.findByEmailAndDeletedFalse(normalizedEmail)
+                .orElseThrow(() -> new InvalidCredentialsException("Credenciais inválidas"));
     }
 }

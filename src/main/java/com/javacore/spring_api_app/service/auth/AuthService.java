@@ -9,4 +9,8 @@ public interface AuthService {
     RegisterUserResponse register(RegisterUserRequest request);
 
     LoginUserResponse login(LoginUserRequest request);
+
+    void verifyEmail(String email, String code);
+
+    void resendEmail(String email);
 }
