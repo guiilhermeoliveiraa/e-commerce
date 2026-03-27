@@ -74,7 +74,7 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidCredentialsException("Credenciais inválidas");
         }
 
-        User user = userRepository.findByEmailAnDeletedFalse(normalizedEmail)
+        User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
                 .orElseThrow(() -> new InvalidCredentialsException("Credenciais inválidas"));
 
         return new LoginUserResponse(tokenService.generateToken(user));
