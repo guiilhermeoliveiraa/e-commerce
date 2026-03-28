@@ -17,6 +17,7 @@ public class ApiErrorResponse {
     private Integer status;
     private String error;
     private String message;
+    private String errorCode;
 
     @Builder.Default
     private List<String> details = List.of();

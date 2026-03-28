@@ -1,20 +1,22 @@
-package com.javacore.spring_api_app.dto.request.sendgrid;
+package com.javacore.spring_api_app.service.sendgrid;
 
+import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
 import com.javacore.spring_api_app.exception.custom.BusinessException;
 import com.javacore.spring_api_app.properties.sendgrid.SendGridProperties;
-import com.javacore.spring_api_app.service.sendgrid.SendGridService;
 import com.sendgrid.Method;
 import com.sendgrid.Request;
 import com.sendgrid.Response;
 import com.sendgrid.SendGrid;
 import com.sendgrid.helpers.mail.Mail;
 import com.sendgrid.helpers.mail.objects.Email;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 
 @Service
+@Slf4j
 public class SendGridServiceImpl implements SendGridService {
 
     private final SendGrid sendGrid;
@@ -42,10 +44,15 @@ public class SendGridServiceImpl implements SendGridService {
             int statusCode = response.getStatusCode();
 
             if (statusCode != 202) {
-                throw new BusinessException("Operação inválida");
+                log.error(
+                        "Erro ao enviar email. Status: {} | Body: {} | Para: {}",
+                        response.getStatusCode(),
+                        response.getBody(),
+                        request.to()
+                );
             }
         } catch (IOException e) {
-            throw new BusinessException("Operação inválida");
+            log.error("Erro de IO ao enviar email para {}", request.to(), e);
         }
     }
 

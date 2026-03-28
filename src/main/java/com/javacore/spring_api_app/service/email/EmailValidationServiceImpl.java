@@ -2,7 +2,9 @@ package com.javacore.spring_api_app.service.email;
 
 import com.javacore.spring_api_app.entity.email.EmailValidation;
 import com.javacore.spring_api_app.entity.user.User;
-import com.javacore.spring_api_app.exception.custom.BusinessException;
+import com.javacore.spring_api_app.exception.custom.EmailNotVerifiedException;
+import com.javacore.spring_api_app.exception.custom.InvalidVerificationCodeException;
+import com.javacore.spring_api_app.exception.custom.RateLimitExceededException;
 import com.javacore.spring_api_app.repository.email.EmailValidationRepository;
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.limit.RateLimitService;
@@ -39,9 +41,7 @@ public class EmailValidationServiceImpl implements EmailValidationService {
 
         if (!probe.isConsumed()) {
             long waitSeconds = probe.getNanosToWaitForRefill() / 1_000_000_000;
-            throw new BusinessException(
-                    "Você excedeu o limite de tentativas. Aguarde " + waitSeconds + " segundos para tentar novamente"
-            );
+            throw new RateLimitExceededException(waitSeconds);
         }
 
         int requestCount = user.getVerificationEmailRequestCount() == null ?
@@ -61,7 +61,7 @@ public class EmailValidationServiceImpl implements EmailValidationService {
 
             if (now.isBefore(nextAllowedTime)) {
                 long remaining = now.until(nextAllowedTime, ChronoUnit.SECONDS);
-                throw new BusinessException("Aguarde " + remaining + " segundos para solicitar um novo email");
+                throw new RateLimitExceededException(remaining);
             }
         }
 
@@ -86,16 +86,16 @@ public class EmailValidationServiceImpl implements EmailValidationService {
     public void validateCode(Long userId, String code) {
         EmailValidation validation =
                 emailValidationRepository.findByUserIdAndVerificationCode(userId, code)
-                    .orElseThrow(() -> new BusinessException("Código inválido"));
+                    .orElseThrow(InvalidVerificationCodeException::new);
 
         User user = validation.getUser();
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new BusinessException("Operação inválida");
+            throw new EmailNotVerifiedException();
         }
 
         if (validation.getExpiresAt().isBefore(Instant.now())) {
-            throw new BusinessException("Este código já expirou");
+            throw new InvalidVerificationCodeException();
         }
 
         emailValidationRepository.markAllCodesUsedForUser(userId);

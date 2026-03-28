@@ -1,8 +1,6 @@
 package com.javacore.spring_api_app.exception.handler;
 
 import com.javacore.spring_api_app.exception.custom.BusinessException;
-import com.javacore.spring_api_app.exception.custom.InvalidCredentialsException;
-import com.javacore.spring_api_app.exception.custom.ResourceNotFoundException;
 import com.javacore.spring_api_app.exception.response.ApiErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,25 +21,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleBusinessException(
             BusinessException ex,
             HttpServletRequest request) {
-        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), null, request);
-    }
-
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleNotFoundException(
-            ResourceNotFoundException ex,
-            HttpServletRequest request) {
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), null, request);
-    }
-
-    @ExceptionHandler(InvalidCredentialsException.class)
-    public ResponseEntity<ApiErrorResponse> handleCredentialsException(
-            InvalidCredentialsException ex,
-            HttpServletRequest request) {
-        return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), null, request);
+        return buildErrorResponse(ex.getStatus(), ex.getMessage(), ex.getErrorCode(), null, request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiErrorResponse> handleNotValiException(
+    public ResponseEntity<ApiErrorResponse> handleNotValidException(
             MethodArgumentNotValidException ex,
             HttpServletRequest request) {
 
@@ -50,7 +34,7 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(FieldError::getDefaultMessage)
                 .toList();
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Erro de validação", details, request);
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Erro de validação", "NOT_VALID" ,details, request);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -63,23 +47,23 @@ public class GlobalExceptionHandler {
                 ex.getName(),
                 ex.getValue()
         );
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, message, null, request);
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, message, "TYPE_MISMATCH", null, request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiErrorResponse> handleViolationException(
             HttpServletRequest request) {
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Erro de violação", null, request);
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Erro de violação", "INTEGRITY_VIOLATION" ,null, request);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGenericException(
-            Exception ex,
             HttpServletRequest request) {
         return buildErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "Erro inesperado",
-                List.of(ex.getMessage()),
+                "INTERNAL_ERROR",
+                null,
                 request
         );
     }
@@ -87,6 +71,7 @@ public class GlobalExceptionHandler {
     private ResponseEntity<ApiErrorResponse> buildErrorResponse(
             HttpStatus status,
             String message,
+            String errorCode,
             List<String> details,
             HttpServletRequest request
     ) {
@@ -94,6 +79,7 @@ public class GlobalExceptionHandler {
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .message(message)
+                .errorCode(errorCode)
                 .details(details)
                 .path(request.getRequestURI())
                 .build();

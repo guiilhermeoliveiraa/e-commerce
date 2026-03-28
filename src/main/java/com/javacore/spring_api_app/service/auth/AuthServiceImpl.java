@@ -8,15 +8,14 @@ import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.LoginUserResponse;
 import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
 import com.javacore.spring_api_app.entity.user.User;
-import com.javacore.spring_api_app.exception.custom.BusinessException;
-import com.javacore.spring_api_app.exception.custom.InvalidCredentialsException;
-import com.javacore.spring_api_app.exception.custom.ResourceNotFoundException;
+import com.javacore.spring_api_app.exception.custom.*;
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.email.EmailValidationService;
 import com.javacore.spring_api_app.service.sendgrid.SendGridService;
 import com.javacore.spring_api_app.service.token.TokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,11 +53,11 @@ public class AuthServiceImpl implements AuthService {
         String normalizedEmail = EmailNormalizer.normalize(request.email());
 
         if (userRepository.existsByEmailAndDeletedFalse(normalizedEmail)) {
-            throw new BusinessException("Operação inválida");
+            throw new EmailAlreadyExistsException();
         }
 
         if (!request.password().equals(request.confirmPassword())) {
-            throw new BusinessException("Senhas não coincidem");
+            throw new PasswordMisMatchException();
         }
 
         User user = User.builder()
@@ -91,15 +90,15 @@ public class AuthServiceImpl implements AuthService {
                     normalizedEmail,
                     request.password()
             ));
-        } catch (Exception ex) {
-            throw new InvalidCredentialsException("Credenciais inválidas");
+        } catch (AuthenticationException exception) {
+            throw new InvalidCredentialsException();
         }
 
         User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
-                .orElseThrow(() -> new InvalidCredentialsException("Credenciais inválidas"));
+                .orElseThrow(InvalidCredentialsException::new);
 
         if (Boolean.FALSE.equals(user.getEmailVerified())) {
-            throw new BusinessException("Operação inválida");
+            throw new EmailNotVerifiedException();
         }
 
         return new LoginUserResponse(tokenService.generateToken(user));
@@ -110,7 +109,7 @@ public class AuthServiceImpl implements AuthService {
         User user = findUserByEmailAndThrow(email);
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new BusinessException("Operação inválida");
+            throw new EmailAlreadyVerifiedException();
         }
 
         emailValidationService.validateCode(user.getId(), code);
@@ -121,7 +120,7 @@ public class AuthServiceImpl implements AuthService {
         User user = findUserByEmailAndThrow(email);
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new BusinessException("Operação inválida");
+            throw new EmailAlreadyExistsException();
         }
 
         var validation = emailValidationService.createValidation(user);
@@ -149,6 +148,6 @@ public class AuthServiceImpl implements AuthService {
         String normalizedEmail = EmailNormalizer.normalize(email);
 
         return userRepository.findByEmailAndDeletedFalse(normalizedEmail)
-                .orElseThrow(() -> new InvalidCredentialsException("Credenciais inválidas"));
+                .orElseThrow(InvalidCredentialsException::new);
     }
 }
