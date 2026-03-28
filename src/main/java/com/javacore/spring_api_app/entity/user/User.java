@@ -39,6 +39,9 @@ public class User implements UserDetails {
     private Instant lastVerificationEmailSentAt;
     private Integer verificationEmailRequestCount;
 
+    @Enumerated(EnumType.STRING)
+    private UserProvider userProvider;
+
     @CreatedDate
     @Column(updatable = false)
     private Instant createdAt;

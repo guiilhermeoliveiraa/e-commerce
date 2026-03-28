@@ -10,6 +10,7 @@ import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.LoginUserResponse;
 import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
 import com.javacore.spring_api_app.entity.user.User;
+import com.javacore.spring_api_app.entity.user.UserProvider;
 import com.javacore.spring_api_app.exception.custom.*;
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.email.EmailValidationService;
@@ -98,6 +99,10 @@ public class AuthServiceImpl implements AuthService {
 
         User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
                 .orElseThrow(InvalidCredentialsException::new);
+
+        if (user.getUserProvider() == UserProvider.GOOGLE) {
+            throw new AuthenticationProviderMisMatchException();
+        }
 
         if (Boolean.FALSE.equals(user.getEmailVerified())) {
             throw new EmailNotVerifiedException();
