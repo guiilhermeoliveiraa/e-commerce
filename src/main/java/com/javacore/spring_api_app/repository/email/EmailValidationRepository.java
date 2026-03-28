@@ -14,5 +14,5 @@ public interface EmailValidationRepository extends JpaRepository<EmailValidation
 
     @Modifying
     @Query("UPDATE EmailValidation e SET e.used = true WHERE e.user.id = :userId AND e.used = false")
-    boolean markAllCodesUsedForUser(Long userId);
+    int markAllCodesUsedForUser(Long userId);
 }

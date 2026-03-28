@@ -16,6 +16,8 @@ public record RegisterUserResponse(
 
         @JsonFormat(pattern = "dd/MM/yyyy HH:mm:ss", timezone = "America/Sao_Paulo")
         Instant updatedAt,
+
+        Boolean emailVerified,
         Boolean deleted
 ) {
 }

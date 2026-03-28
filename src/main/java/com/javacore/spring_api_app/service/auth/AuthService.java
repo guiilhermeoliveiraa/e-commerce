@@ -1,5 +1,7 @@
 package com.javacore.spring_api_app.service.auth;
 
+import com.javacore.spring_api_app.dto.request.email.ResendEmailRequest;
+import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
 import com.javacore.spring_api_app.dto.response.LoginUserResponse;
@@ -10,7 +12,7 @@ public interface AuthService {
 
     LoginUserResponse login(LoginUserRequest request);
 
-    void verifyEmail(String email, String code);
+    void verifyEmail(VerifyEmailRequest request);
 
-    void resendEmail(String email);
+    void resendEmail(ResendEmailRequest request);
 }

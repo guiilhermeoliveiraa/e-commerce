@@ -2,6 +2,8 @@ package com.javacore.spring_api_app.service.auth;
 
 import com.javacore.spring_api_app.domain.email.EmailNormalizer;
 import com.javacore.spring_api_app.domain.name.NameNormalizer;
+import com.javacore.spring_api_app.dto.request.email.ResendEmailRequest;
+import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
 import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
@@ -105,19 +107,19 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void verifyEmail(String email, String code) {
-        User user = findUserByEmailAndThrow(email);
+    public void verifyEmail(VerifyEmailRequest request) {
+        User user = findUserByEmailAndThrow(request.email());
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new EmailAlreadyVerifiedException();
         }
 
-        emailValidationService.validateCode(user.getId(), code);
+        emailValidationService.validateCode(user.getId(), request.code());
     }
 
     @Override
-    public void resendEmail(String email) {
-        User user = findUserByEmailAndThrow(email);
+    public void resendEmail(ResendEmailRequest request) {
+        User user = findUserByEmailAndThrow(request.email());
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new EmailAlreadyExistsException();
@@ -140,6 +142,7 @@ public class AuthServiceImpl implements AuthService {
                 user.getEmail(),
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
+                user.getEmailVerified(),
                 user.getDeleted()
         );
     }
