@@ -4,4 +4,6 @@ import com.javacore.spring_api_app.entity.user.User;
 
 public interface TokenService {
     String generateToken(User user);
+
+    String generateRefreshToken(User user);
 }

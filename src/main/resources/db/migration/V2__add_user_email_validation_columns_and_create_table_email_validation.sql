@@ -10,8 +10,8 @@ CREATE TABLE email_validations(
     expires_at TIMESTAMP NOT NULL,
     used BOOLEAN NOT NULL DEFAULT FALSE,
 
-                CONSTRAINT fk_email_validations_user
-                              FOREIGN KEY (user_id)
-                              REFERENCES users(id)
-                              ON DELETE CASCADE
+    CONSTRAINT fk_email_validations_user
+                        FOREIGN KEY (user_id)
+                        REFERENCES users(id)
+                        ON DELETE CASCADE
 );

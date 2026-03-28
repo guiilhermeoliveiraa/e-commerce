@@ -2,10 +2,12 @@ package com.javacore.spring_api_app.controller;
 
 import com.javacore.spring_api_app.dto.request.email.ResendEmailRequest;
 import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
+import com.javacore.spring_api_app.dto.request.token.RefreshTokenRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
-import com.javacore.spring_api_app.dto.response.LoginUserResponse;
-import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
+import com.javacore.spring_api_app.dto.response.user.RegisterUserResponse;
+import com.javacore.spring_api_app.dto.response.token.TokenResponse;
+import com.javacore.spring_api_app.dto.response.user.LoginUserResponse;
 import com.javacore.spring_api_app.service.auth.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +33,12 @@ public class AuthController {
     public ResponseEntity<LoginUserResponse> login(@RequestBody @Valid LoginUserRequest request) {
         LoginUserResponse loginResponse = authService.login(request);
         return ResponseEntity.ok(loginResponse);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponse> refresh(@RequestBody RefreshTokenRequest request) {
+        TokenResponse tokenResponse = authService.refresh(request.refreshToken());
+        return ResponseEntity.ok(tokenResponse);
     }
 
     @PostMapping("/verify-email")

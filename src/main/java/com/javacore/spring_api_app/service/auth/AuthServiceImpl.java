@@ -7,21 +7,29 @@ import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
 import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
-import com.javacore.spring_api_app.dto.response.LoginUserResponse;
-import com.javacore.spring_api_app.dto.response.RegisterUserResponse;
+import com.javacore.spring_api_app.dto.response.user.RegisterUserResponse;
+import com.javacore.spring_api_app.dto.response.token.TokenResponse;
+import com.javacore.spring_api_app.dto.response.user.LoginUserResponse;
+import com.javacore.spring_api_app.entity.token.RefreshToken;
 import com.javacore.spring_api_app.entity.user.User;
 import com.javacore.spring_api_app.entity.user.UserProvider;
 import com.javacore.spring_api_app.exception.custom.*;
+import com.javacore.spring_api_app.repository.token.RefreshTokenRepository;
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.email.EmailValidationService;
+import com.javacore.spring_api_app.service.refresh.RefreshTokenService;
 import com.javacore.spring_api_app.service.sendgrid.SendGridService;
 import com.javacore.spring_api_app.service.token.TokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 @Transactional
@@ -33,6 +41,9 @@ public class AuthServiceImpl implements AuthService {
     private final TokenService tokenService;
     private final SendGridService sendGridService;
     private final EmailValidationService emailValidationService;
+    private final JwtDecoder jwtDecoder;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthServiceImpl(
             UserRepository userRepository,
@@ -40,13 +51,19 @@ public class AuthServiceImpl implements AuthService {
             AuthenticationManager authenticationManager,
             TokenService tokenService,
             SendGridService sendGridService,
-            EmailValidationService emailValidationService) {
+            EmailValidationService emailValidationService,
+            JwtDecoder jwtDecoder,
+            RefreshTokenRepository refreshTokenRepository,
+            RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
         this.sendGridService = sendGridService;
         this.emailValidationService = emailValidationService;
+        this.jwtDecoder = jwtDecoder;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Override
@@ -69,6 +86,7 @@ public class AuthServiceImpl implements AuthService {
                 .lastName(normalizedLastName)
                 .password(passwordEncoder.encode(request.password()))
                 .emailVerified(false)
+                .userProvider(UserProvider.LOCAL)
                 .build();
 
         user = userRepository.save(user);
@@ -108,7 +126,42 @@ public class AuthServiceImpl implements AuthService {
             throw new EmailNotVerifiedException();
         }
 
-        return new LoginUserResponse(tokenService.generateToken(user));
+        String accessToken = tokenService.generateToken(user);
+        String refreshToken = refreshTokenService.create(user);
+
+        return new LoginUserResponse(accessToken, refreshToken);
+    }
+
+    @Override
+    public TokenResponse refresh(String refreshToken) {
+        Jwt jwt = jwtDecoder.decode(refreshToken);
+
+        if (!"refresh".equals(jwt.getClaim("type"))) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        String jti = jwt.getClaim("jti");
+
+        RefreshToken storedToken = refreshTokenRepository.findByTokenId(jti)
+                .orElseThrow(InvalidCredentialsException::new);
+
+        if (Boolean.TRUE.equals(storedToken.getRevoked())) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        if (storedToken.getExpiresAt().isBefore(Instant.now())) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        User user = storedToken.getUser();
+
+        storedToken.setRevoked(true);
+        refreshTokenRepository.save(storedToken);
+
+        String newAccessToken = tokenService.generateToken(user);
+        String newRefreshToken = refreshTokenService.create(user);
+
+        return new TokenResponse(newAccessToken, newRefreshToken);
     }
 
     @Override
@@ -148,6 +201,7 @@ public class AuthServiceImpl implements AuthService {
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
                 user.getEmailVerified(),
+                user.getUserProvider(),
                 user.getDeleted()
         );
     }

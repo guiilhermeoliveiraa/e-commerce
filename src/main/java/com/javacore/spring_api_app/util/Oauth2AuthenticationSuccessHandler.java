@@ -1,7 +1,7 @@
 package com.javacore.spring_api_app.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.javacore.spring_api_app.dto.response.LoginUserResponse;
+import com.javacore.spring_api_app.dto.response.user.LoginUserResponse;
 import com.javacore.spring_api_app.service.oauth2.Oauth2Service;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
