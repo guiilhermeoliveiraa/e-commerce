@@ -132,7 +132,7 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidCredentialsException();
         }
 
-        User user = userRepository.findByEmailAndDeletedFalse(emailCtx.masked())
+        User user = userRepository.findByEmailAndDeletedFalse(emailCtx.normalized())
                 .orElseThrow(() -> {
                     log.warn("event=login_failed reason=user_not_found email={}", emailCtx.masked());
                     return new InvalidCredentialsException();
