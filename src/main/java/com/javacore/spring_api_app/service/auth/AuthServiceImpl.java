@@ -5,8 +5,10 @@ import com.javacore.spring_api_app.domain.name.NameNormalizer;
 import com.javacore.spring_api_app.dto.request.email.ResendEmailRequest;
 import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
 import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
+import com.javacore.spring_api_app.dto.request.token.RefreshTokenRequest;
 import com.javacore.spring_api_app.dto.request.user.LoginUserRequest;
 import com.javacore.spring_api_app.dto.request.user.RegisterUserRequest;
+import com.javacore.spring_api_app.dto.response.token.LogoutRequest;
 import com.javacore.spring_api_app.dto.response.user.RegisterUserResponse;
 import com.javacore.spring_api_app.dto.response.token.TokenResponse;
 import com.javacore.spring_api_app.dto.response.user.LoginUserResponse;
@@ -30,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @Transactional
@@ -133,8 +136,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public TokenResponse refresh(String refreshToken) {
-        Jwt jwt = jwtDecoder.decode(refreshToken);
+    public TokenResponse refresh(RefreshTokenRequest request) {
+        Jwt jwt = jwtDecoder.decode(request.refreshToken());
 
         if (!"refresh".equals(jwt.getClaim("type"))) {
             throw new InvalidRefreshTokenException();
@@ -145,12 +148,20 @@ public class AuthServiceImpl implements AuthService {
         RefreshToken storedToken = refreshTokenRepository.findByTokenId(jti)
                 .orElseThrow(InvalidCredentialsException::new);
 
-        if (Boolean.TRUE.equals(storedToken.getRevoked())) {
+        if (storedToken.getExpiresAt().isBefore(Instant.now())) {
             throw new InvalidRefreshTokenException();
         }
 
-        if (storedToken.getExpiresAt().isBefore(Instant.now())) {
-            throw new InvalidRefreshTokenException();
+        if (Boolean.TRUE.equals(storedToken.getRevoked())) {
+
+            User user = storedToken.getUser();
+
+            List<RefreshToken> tokens = refreshTokenRepository.findAllByUser(user);
+
+            tokens.forEach(token -> token.setRevoked(true));
+            refreshTokenRepository.saveAll(tokens);
+
+            throw new SuspiciousTokenReuseException();
         }
 
         User user = storedToken.getUser();
@@ -162,6 +173,23 @@ public class AuthServiceImpl implements AuthService {
         String newRefreshToken = refreshTokenService.create(user);
 
         return new TokenResponse(newAccessToken, newRefreshToken);
+    }
+
+    @Override
+    public void logout(LogoutRequest request) {
+        Jwt jwt = jwtDecoder.decode(request.refreshToken());
+
+        if (!"refresh".equals(jwt.getClaim("type"))) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        String jti = jwt.getClaim("jti");
+
+        refreshTokenRepository.findByTokenId(jti)
+                .ifPresent(token -> {
+                    token.setRevoked(true);
+                    refreshTokenRepository.save(token);
+                });
     }
 
     @Override
