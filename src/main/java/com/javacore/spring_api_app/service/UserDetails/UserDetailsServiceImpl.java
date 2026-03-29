@@ -18,6 +18,6 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return userRepository.findByEmailAndDeletedFalse(username)
-                .orElseThrow(() -> new UsernameNotFoundException("Operação inválida"));
+                .orElseThrow(() -> new UsernameNotFoundException("Credenciais inválidas"));
     }
 }

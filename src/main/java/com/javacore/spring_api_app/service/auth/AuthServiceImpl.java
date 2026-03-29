@@ -1,6 +1,5 @@
 package com.javacore.spring_api_app.service.auth;
 
-import com.javacore.spring_api_app.domain.email.EmailNormalizer;
 import com.javacore.spring_api_app.domain.name.NameNormalizer;
 import com.javacore.spring_api_app.dto.request.email.ResendEmailRequest;
 import com.javacore.spring_api_app.dto.request.email.VerifyEmailRequest;
@@ -22,6 +21,8 @@ import com.javacore.spring_api_app.service.email.EmailValidationService;
 import com.javacore.spring_api_app.service.refresh.RefreshTokenService;
 import com.javacore.spring_api_app.service.sendgrid.SendGridService;
 import com.javacore.spring_api_app.service.token.TokenService;
+import com.javacore.spring_api_app.util.EmailContext;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -36,6 +37,7 @@ import java.util.List;
 
 @Service
 @Transactional
+@Slf4j
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
@@ -73,18 +75,22 @@ public class AuthServiceImpl implements AuthService {
     public RegisterUserResponse register(RegisterUserRequest request) {
         String normalizedFirstName = NameNormalizer.normalize(request.firstName());
         String normalizedLastName = NameNormalizer.normalize(request.lastName());
-        String normalizedEmail = EmailNormalizer.normalize(request.email());
+        EmailContext emailCtx = EmailContext.of(request.email());
 
-        if (userRepository.existsByEmailAndDeletedFalse(normalizedEmail)) {
+        log.info("event=register_attempt email={}", emailCtx.masked());
+
+        if (userRepository.existsByEmailAndDeletedFalse(emailCtx.normalized())) {
+            log.warn("event=register_failed reason=email_already_exists email={}", emailCtx.masked());
             throw new EmailAlreadyExistsException();
         }
 
         if (!request.password().equals(request.confirmPassword())) {
+            log.warn("event=register_failed reason=password_mismatch email={}", emailCtx.masked());
             throw new PasswordMisMatchException();
         }
 
         User user = User.builder()
-                .email(normalizedEmail)
+                .email(emailCtx.normalized())
                 .firstName(normalizedFirstName)
                 .lastName(normalizedLastName)
                 .password(passwordEncoder.encode(request.password()))
@@ -94,6 +100,9 @@ public class AuthServiceImpl implements AuthService {
 
         user = userRepository.save(user);
 
+        log.info("event=register_success userPublicId={} email={}",
+                user.getPublicId(), emailCtx.masked());
+
         var validation = emailValidationService.createValidation(user);
 
         sendGridService.sendEmail(new SendGridEmailRequest(
@@ -102,59 +111,84 @@ public class AuthServiceImpl implements AuthService {
                 validation.getVerificationCode()
         ));
 
+        log.debug("event=verification_email_sent userPublicId={}", user.getPublicId());
+
         return toResponse(user);
     }
 
     @Override
     public LoginUserResponse login(LoginUserRequest request) {
-        String normalizedEmail = EmailNormalizer.normalize(request.email());
+        EmailContext emailCtx = EmailContext.of(request.email());
+
+        log.info("event=login_attempt email={}", emailCtx.masked());
 
         try {
             authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
-                    normalizedEmail,
+                    emailCtx.normalized(),
                     request.password()
             ));
         } catch (AuthenticationException exception) {
+            log.warn("event=login_failed reason=invalid_credentials email={}", emailCtx.masked());
             throw new InvalidCredentialsException();
         }
 
-        User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+        User user = userRepository.findByEmailAndDeletedFalse(emailCtx.masked())
+                .orElseThrow(() -> {
+                    log.warn("event=login_failed reason=user_not_found email={}", emailCtx.masked());
+                    return new InvalidCredentialsException();
+                });
 
         if (user.getUserProvider() == UserProvider.GOOGLE) {
+            log.warn("event=login_failed reason=provider_mismatch email={} provider={}",
+                    emailCtx.masked(), user.getUserProvider());
             throw new AuthenticationProviderMisMatchException();
         }
 
         if (Boolean.FALSE.equals(user.getEmailVerified())) {
+            log.warn("event=login_failed reason=email_not_verified userPublicId={}",
+                    user.getPublicId());
             throw new EmailNotVerifiedException();
         }
 
         String accessToken = tokenService.generateToken(user);
         String refreshToken = refreshTokenService.create(user);
 
+        log.info("event=login_success userPublicId={}", user.getPublicId());
+
         return new LoginUserResponse(accessToken, refreshToken);
     }
 
     @Override
     public TokenResponse refresh(RefreshTokenRequest request) {
+        log.debug("event=refresh_attempt");
+
         Jwt jwt = jwtDecoder.decode(request.refreshToken());
 
         if (!"refresh".equals(jwt.getClaim("type"))) {
+            log.warn("event=refresh_failed reason=invalid_type");
             throw new InvalidRefreshTokenException();
         }
 
         String jti = jwt.getClaim("jti");
 
         RefreshToken storedToken = refreshTokenRepository.findByTokenId(jti)
-                .orElseThrow(InvalidCredentialsException::new);
+                .orElseThrow(() -> {
+                    log.warn("event=refresh_failed reason=token_not_found jti={}", jti);
+                    return new InvalidCredentialsException();
+                });
 
         if (storedToken.getExpiresAt().isBefore(Instant.now())) {
+            log.warn("event=refresh_failed reason=token_expired userPublicId={}",
+                    storedToken.getUser().getPublicId());
             throw new InvalidRefreshTokenException();
         }
 
         if (Boolean.TRUE.equals(storedToken.getRevoked())) {
 
             User user = storedToken.getUser();
+
+            log.error("event=refresh_failed reason=suspicious_token_reuse userPublicId={}",
+                    user.getPublicId());
 
             List<RefreshToken> tokens = refreshTokenRepository.findAllByUser(user);
 
@@ -172,14 +206,19 @@ public class AuthServiceImpl implements AuthService {
         String newAccessToken = tokenService.generateToken(user);
         String newRefreshToken = refreshTokenService.create(user);
 
+        log.info("event=refresh_success userPublicId={}", user.getPublicId());
+
         return new TokenResponse(newAccessToken, newRefreshToken);
     }
 
     @Override
     public void logout(LogoutRequest request) {
+        log.info("event=logout_attempt");
+
         Jwt jwt = jwtDecoder.decode(request.refreshToken());
 
         if (!"refresh".equals(jwt.getClaim("type"))) {
+            log.warn("event=logout_failed reason=invalid_token");
             throw new InvalidRefreshTokenException();
         }
 
@@ -189,25 +228,41 @@ public class AuthServiceImpl implements AuthService {
                 .ifPresent(token -> {
                     token.setRevoked(true);
                     refreshTokenRepository.save(token);
+                    log.info("event=logout_success userPublicId={}",
+                            token.getUser().getPublicId());
                 });
     }
 
     @Override
     public void verifyEmail(VerifyEmailRequest request) {
+        EmailContext emailCtx = EmailContext.of(request.email());
+
+        log.info("event=email_verification_attempt email={}", emailCtx.masked());
+
         User user = findUserByEmailAndThrow(request.email());
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            log.warn("event=email_verification_failed reason=already_verified userPublicId={}",
+                    user.getPublicId());
             throw new EmailAlreadyVerifiedException();
         }
 
         emailValidationService.validateCode(user.getId(), request.code());
+        log.info("event=email_verification_success userPublicId={}",
+                user.getPublicId());
     }
 
     @Override
     public void resendEmail(ResendEmailRequest request) {
+        EmailContext emailCtx = EmailContext.of(request.email());
+
+        log.info("event=resend_email_attempt email={}", emailCtx.masked());
+
         User user = findUserByEmailAndThrow(request.email());
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            log.warn("event=resend_email_failed reason=already_verified userPublicId={}",
+                    user.getPublicId());
             throw new EmailAlreadyExistsException();
         }
 
@@ -218,6 +273,8 @@ public class AuthServiceImpl implements AuthService {
                 user.getFirstName(),
                 validation.getVerificationCode()
         ));
+        log.info("event=resend_email_success userPublicId={}",
+                user.getPublicId());
     }
 
     private RegisterUserResponse toResponse(User user) {
@@ -235,9 +292,12 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private User findUserByEmailAndThrow(String email) {
-        String normalizedEmail = EmailNormalizer.normalize(email);
+        EmailContext emailCtx = EmailContext.of(email);
 
-        return userRepository.findByEmailAndDeletedFalse(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+        return userRepository.findByEmailAndDeletedFalse(emailCtx.normalized())
+                .orElseThrow(() -> {
+                    log.warn("event=user_lookup_failed reason=user_not_found email={}", emailCtx.masked());
+                    return new InvalidCredentialsException();
+                });
     }
 }

@@ -1,5 +1,6 @@
 package com.javacore.spring_api_app.service.sendgrid;
 
+import com.javacore.spring_api_app.domain.email.MaskEmail;
 import com.javacore.spring_api_app.dto.request.sendgrid.SendGridEmailRequest;
 import com.javacore.spring_api_app.exception.custom.BusinessException;
 import com.javacore.spring_api_app.properties.sendgrid.SendGridProperties;
@@ -30,7 +31,11 @@ public class SendGridServiceImpl implements SendGridService {
     @Override
     @Async("emailTaskExecutor")
     public void sendEmail(SendGridEmailRequest request) {
+        String maskedEmail = MaskEmail.mask(request.to());
+
         Mail mail = buildEmail(request);
+
+        log.debug("event=email_send_attempt provider=sendgrid to={}", maskedEmail);
 
         Request sdRequest = new Request();
 
@@ -45,14 +50,22 @@ public class SendGridServiceImpl implements SendGridService {
 
             if (statusCode != 202) {
                 log.error(
-                        "Erro ao enviar email. Status: {} | Body: {} | Para: {}",
-                        response.getStatusCode(),
-                        response.getBody(),
-                        request.to()
+                        "event=email_send_failed provider=sendgrid reason=unexpected_status statusCode={} to={}",
+                        statusCode,
+                        maskedEmail
+                );
+            } else {
+                log.info(
+                        "event=email_send_success provider=sendgrid to={}",
+                        maskedEmail
                 );
             }
         } catch (IOException e) {
-            log.error("Erro de IO ao enviar email para {}", request.to(), e);
+            log.error(
+                    "event=email_send_failed provider=sendgrid reason=io_exception to={}",
+                    maskedEmail,
+                    e
+            );
         }
     }
 

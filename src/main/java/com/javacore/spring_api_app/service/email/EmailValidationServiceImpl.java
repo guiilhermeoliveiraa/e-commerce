@@ -9,6 +9,7 @@ import com.javacore.spring_api_app.repository.email.EmailValidationRepository;
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.limit.RateLimitService;
 import com.javacore.spring_api_app.util.EmailCodeGenerator;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 
 @Service
 @Transactional
+@Slf4j
 public class EmailValidationServiceImpl implements EmailValidationService {
 
     private final EmailValidationRepository emailValidationRepository;
@@ -37,10 +39,14 @@ public class EmailValidationServiceImpl implements EmailValidationService {
 
     @Override
     public EmailValidation createValidation(User user) {
+        log.debug("event=verification_code_generation_attempt userPublicId={}", user.getPublicId());
+
         var probe = rateLimitService.tryConsume(user.getId());
 
         if (!probe.isConsumed()) {
             long waitSeconds = probe.getNanosToWaitForRefill() / 1_000_000_000;
+            log.warn("event=verification_code_generation_failed reason=rate_limit_exceeded userPublicId={} waitSeconds={}",
+                    user.getPublicId(), waitSeconds);
             throw new RateLimitExceededException(waitSeconds);
         }
 
@@ -53,6 +59,7 @@ public class EmailValidationServiceImpl implements EmailValidationService {
 
         if (user.getLastVerificationEmailSentAt() != null &&
                 user.getLastVerificationEmailSentAt().isBefore(now.minus(1, ChronoUnit.HOURS))) {
+            log.debug("event=verification_request_counter_reset userPublicId={}", user.getPublicId());
             user.setVerificationEmailRequestCount(0);
         }
 
@@ -61,6 +68,8 @@ public class EmailValidationServiceImpl implements EmailValidationService {
 
             if (now.isBefore(nextAllowedTime)) {
                 long remaining = now.until(nextAllowedTime, ChronoUnit.SECONDS);
+                log.warn("event=verification_code_generation_failed reason=too_early_request userPublicId={} remainingSeconds={}",
+                        user.getPublicId(), remaining);
                 throw new RateLimitExceededException(remaining);
             }
         }
@@ -68,6 +77,9 @@ public class EmailValidationServiceImpl implements EmailValidationService {
         user.setLastVerificationEmailSentAt(now);
         user.setVerificationEmailRequestCount(requestCount + 1);
         userRepository.save(user);
+
+        log.debug("event=verification_request_updated userPublicId={} requestCount={}",
+                user.getPublicId(), user.getVerificationEmailRequestCount());
 
         emailValidationRepository.markAllCodesUsedForUser(user.getId());
 
@@ -79,22 +91,37 @@ public class EmailValidationServiceImpl implements EmailValidationService {
                 .expiresAt(now.plus(15, ChronoUnit.MINUTES))
                 .used(false)
                 .build();
-        return emailValidationRepository.save(emailValidation);
+
+        EmailValidation saved = emailValidationRepository.save(emailValidation);
+
+        log.info("event=verification_code_generated userPublicId={} expiresAt={}",
+                user.getPublicId(), saved.getExpiresAt());
+
+        return saved;
     }
 
     @Override
     public void validateCode(Long userId, String code) {
+        log.debug("event=verification_code_validation_attempt userId={}", userId);
+
         EmailValidation validation =
                 emailValidationRepository.findByUserIdAndVerificationCode(userId, code)
-                    .orElseThrow(InvalidVerificationCodeException::new);
+                    .orElseThrow(() -> {
+                        log.warn("event=verification_code_validation_failed reason=invalid_code userId={}", userId);
+                        return new InvalidVerificationCodeException();
+                    });
 
         User user = validation.getUser();
 
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            log.warn("event=verification_code_validation_failed reason=already_verified userPublicId={}",
+                    user.getPublicId());
             throw new EmailNotVerifiedException();
         }
 
         if (validation.getExpiresAt().isBefore(Instant.now())) {
+            log.warn("event=verification_code_validation_failed reason=already_verified userPublicId={}",
+                    user.getPublicId());
             throw new InvalidVerificationCodeException();
         }
 
@@ -108,5 +135,6 @@ public class EmailValidationServiceImpl implements EmailValidationService {
         user.setVerificationEmailRequestCount(0);
 
         userRepository.save(user);
+        log.info("event=email_verification_success userPublicId={}", user.getPublicId());
     }
 }

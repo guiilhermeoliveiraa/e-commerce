@@ -1,6 +1,5 @@
 package com.javacore.spring_api_app.service.oauth2;
 
-import com.javacore.spring_api_app.domain.email.EmailNormalizer;
 import com.javacore.spring_api_app.domain.name.NameNormalizer;
 import com.javacore.spring_api_app.dto.response.user.LoginUserResponse;
 import com.javacore.spring_api_app.entity.user.User;
@@ -9,11 +8,14 @@ import com.javacore.spring_api_app.exception.custom.AuthenticationProviderMisMat
 import com.javacore.spring_api_app.repository.user.UserRepository;
 import com.javacore.spring_api_app.service.refresh.RefreshTokenService;
 import com.javacore.spring_api_app.service.token.TokenService;
+import com.javacore.spring_api_app.util.EmailContext;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
+@Slf4j
 public class Oauth2ServiceImpl implements Oauth2Service {
 
     private final UserRepository userRepository;
@@ -31,13 +33,18 @@ public class Oauth2ServiceImpl implements Oauth2Service {
 
     @Override
     public LoginUserResponse loginWithGoogle(String email, String name) {
-        String normalizedEmail = EmailNormalizer.normalize(email);
+        EmailContext emailCtx = EmailContext.of(email);
 
-        User user = userRepository.findByEmailAndDeletedFalse(normalizedEmail)
+        log.info("event=oauth2_login_attempt provider=google email={}", emailCtx.masked());
+
+        User user = userRepository.findByEmailAndDeletedFalse(emailCtx.normalized())
                 .map(existingUser -> {
                     if (existingUser.getUserProvider() == UserProvider.LOCAL) {
+                        log.warn("event=oauth2_login_failed reason=provider_mismatch email={} expected=GOOGLE actual={}",
+                                emailCtx.masked(), existingUser.getUserProvider());
                         throw new AuthenticationProviderMisMatchException();
                     }
+                    log.info("event=oauth2_login_existing_user userPublicId={}", existingUser.getPublicId());
                     return existingUser;
                 })
                 .orElseGet(() -> {
@@ -49,7 +56,7 @@ public class Oauth2ServiceImpl implements Oauth2Service {
                     String lastName = parts.length > 1 ? parts[parts.length - 1] : "";
 
                     User newUser = User.builder()
-                            .email(normalizedEmail)
+                            .email(emailCtx.masked())
                             .firstName(firstName)
                             .lastName(lastName)
                             .password("")
@@ -57,12 +64,17 @@ public class Oauth2ServiceImpl implements Oauth2Service {
                             .userProvider(UserProvider.GOOGLE)
                             .build();
 
-                    return userRepository.save(newUser);
+                    User savedUser = userRepository.save(newUser);
+
+                    log.info("event=oauth2_register_success provider=google userPublicId={} email={}",
+                            savedUser.getPublicId(), emailCtx.masked());
+                    return savedUser;
                 });
 
         String accessToken = tokenService.generateToken(user);
         String refreshToken = refreshTokenService.create(user);
 
+        log.info("event=oauth2_login_success provider=google userPublicId={}", user.getPublicId());
         return new LoginUserResponse(accessToken, refreshToken);
     }
 }
